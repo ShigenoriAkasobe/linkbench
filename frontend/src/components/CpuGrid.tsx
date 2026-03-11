@@ -1,10 +1,17 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CpuSnapshot } from '../types';
 
 interface Props {
   liveCpu: CpuSnapshot | null;
   numCores: number;
   currentLinker: string | null;
+}
+
+interface CpuInfo {
+  logical: number;
+  physical: number;
+  freqMhz: number | null;
+  model: string;
 }
 
 function getCpuColor(usage: number): string {
@@ -43,6 +50,22 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
   const avgUsage =
     cores.length > 0 ? cores.reduce((a, b) => a + b, 0) / cores.length : 0;
 
+  const [cpuInfo, setCpuInfo] = useState<CpuInfo | null>(null);
+
+  useEffect(() => {
+    fetch('/api/system')
+      .then((r) => r.json())
+      .then((d) =>
+        setCpuInfo({
+          logical: d.cpu_count,
+          physical: d.cpu_count_physical,
+          freqMhz: d.cpu_freq?.max || d.cpu_freq?.current || null,
+          model: d.cpu_model || 'Unknown',
+        }),
+      )
+      .catch(() => {});
+  }, []);
+
   const [gridSize, setGridSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const gridRef = useCallback((node: HTMLDivElement | null) => {
     if (!node) return;
@@ -66,9 +89,11 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
   return (
     <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 h-full flex flex-col">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold text-slate-300">
-          CPU Core Usage
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-300">
+            CPU Core Usage
+          </h2>
+        </div>
         <div className="flex items-center gap-2 text-[11px]">
           {currentLinker && (
             <span className="text-sky-400/80 bg-sky-400/10 px-2 py-0.5 rounded-full animate-pulse">
@@ -121,6 +146,13 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
           </span>
         ))}
       </div>
+
+      {cpuInfo && (
+        <div className="mt-1 text-center text-[10px] text-slate-600 font-mono">
+          {cpuInfo.model} — {cpuInfo.physical}C/{cpuInfo.logical}T
+          {cpuInfo.freqMhz && ` · ${(cpuInfo.freqMhz / 1000).toFixed(1)}GHz`}
+        </div>
+      )}
     </div>
   );
 }

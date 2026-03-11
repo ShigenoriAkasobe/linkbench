@@ -64,10 +64,20 @@ async def broadcast(message: dict):
 @app.get("/api/system")
 async def get_system_info():
     """システム情報を返す"""
+    model = ""
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    model = line.split(":", 1)[1].strip()
+                    break
+    except OSError:
+        pass
     return {
         "cpu_count": psutil.cpu_count(logical=True),
         "cpu_count_physical": psutil.cpu_count(logical=False),
         "cpu_freq": psutil.cpu_freq()._asdict() if psutil.cpu_freq() else None,
+        "cpu_model": model or "Unknown",
     }
 
 
