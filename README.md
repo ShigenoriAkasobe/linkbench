@@ -1,4 +1,6 @@
-# 🔗 LinkBench — リンカ パフォーマンス ベンチマーク
+# LinkBench — Linker Performance Benchmark
+
+![alt text](data/img/linkbench_top.png)
 
 GNU ld / LLVM lld / mold の 3 つのリンカで **MySQL (mysqld)** をリンクし、リンク速度と**論理プロセッサごとの CPU 使用率**を計測・可視化するウェブアプリケーションです。
 
@@ -29,7 +31,7 @@ linkbench/
 │       ├── App.tsx                # メインダッシュボード
 │       ├── useWebSocket.ts        # WebSocket 接続・状態管理
 │       └── components/
-│           ├── LinkTimeChart.tsx   # リンク時間比較チャート
+│           ├── LinkTimeChart.tsx  # リンク時間比較チャート
 │           ├── CpuGrid.tsx        # リアルタイム CPU グリッド
 │           ├── CpuTimeline.tsx    # CPU 使用率タイムライン
 │           ├── CpuHeatmap.tsx     # コア別ヒートマップ
@@ -123,7 +125,7 @@ API・WebSocket は Vite のプロキシ経由でバックエンド (port 8000) 
 1. ブラウザでダッシュボードを開く
 2. ヘッダーのボタンで実行方法を選択:
    - **個別ボタン** (`GNU ld` / `LLVM lld` / `mold`): 選択したリンカのみ実行
-   - **「▶ 全て実行」**: 3 つのリンカを順番に実行
+   - **「Run All」**: 3 つのリンカを順番に実行
 3. リンク中は以下がリアルタイム更新されます:
    - CPU グリッド: 各論理プロセッサの使用率
    - 実行ログ: 進行状況
