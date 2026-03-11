@@ -60,8 +60,6 @@ export default function CpuTimeline({ results }: Props) {
     });
   }, [successResults]);
 
-  if (successResults.length === 0) return null;
-
   // 各リンカごとに個別のチャートデータを作成
   const perLinkerData = useMemo(() => {
     return successResults.map((r) => ({
@@ -74,6 +72,8 @@ export default function CpuTimeline({ results }: Props) {
       })),
     }));
   }, [successResults]);
+
+  if (successResults.length === 0) return null;
 
   return (
     <div className="bg-slate-800/50 rounded-2xl p-6 border border-slate-700/50">

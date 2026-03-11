@@ -10,6 +10,7 @@ interface UseWebSocketReturn {
   liveCpu: CpuSnapshot | null;
   numCores: number;
   startBenchmark: (numModules?: number) => void;
+  reset: () => void;
 }
 
 export function useWebSocket(): UseWebSocketReturn {
@@ -113,6 +114,13 @@ export function useWebSocket(): UseWebSocketReturn {
     });
   }, []);
 
+  const reset = useCallback(() => {
+    setResults([]);
+    setStatusMessages([]);
+    setLiveCpu(null);
+    setCurrentLinker(null);
+  }, []);
+
   return {
     connected,
     running,
@@ -122,5 +130,6 @@ export function useWebSocket(): UseWebSocketReturn {
     liveCpu,
     numCores,
     startBenchmark,
+    reset,
   };
 }
