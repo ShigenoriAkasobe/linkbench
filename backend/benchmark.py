@@ -151,10 +151,10 @@ class MySQLBenchmarkRunner:
     def prepare(self):
         """MySQL ソースをダウンロード・ビルド"""
         if self.is_prepared():
-            self._emit_status("MySQL オブジェクトファイルは準備済みです")
+            self._emit_status("MySQL object files are already prepared")
             return
 
-        self._emit_status("MySQL ソースを準備中... (初回は時間がかかります)")
+        self._emit_status("Preparing MySQL source... (this may take a while on first run)")
         script = os.path.join(self.project_root, "scripts", "prepare_mysql.sh")
         proc = subprocess.run(
             ["bash", script, self.mysql_dir],
@@ -162,8 +162,8 @@ class MySQLBenchmarkRunner:
             text=True,
         )
         if proc.returncode != 0:
-            raise RuntimeError(f"MySQL 準備エラー:\n{proc.stderr}")
-        self._emit_status("MySQL 準備完了")
+            raise RuntimeError(f"MySQL preparation error:\n{proc.stderr}")
+        self._emit_status("MySQL preparation complete")
 
     def _get_link_cmd(self) -> list[str]:
         """mysqld のベースリンクコマンドを取得 (キャッシュ)"""
@@ -173,8 +173,8 @@ class MySQLBenchmarkRunner:
         cmd = _extract_link_command(self.mysql_dir)
         if cmd is None:
             raise RuntimeError(
-                "mysqld のリンクコマンドを抽出できません。"
-                "prepare_mysql.sh を再実行してください。"
+                "Cannot extract mysqld link command. "
+                "Please re-run prepare_mysql.sh."
             )
         self._base_link_cmd = cmd
         return cmd
@@ -187,10 +187,10 @@ class MySQLBenchmarkRunner:
                 display_name=linker_config.display_name,
                 link_time=0,
                 success=False,
-                error=f"{linker_config.display_name} がインストールされていません",
+                error=f"{linker_config.display_name} is not installed",
             )
 
-        self._emit_status(f"リンク中: {linker_config.display_name} (mysqld)...")
+        self._emit_status(f"Linking: {linker_config.display_name} (mysqld)...")
 
         base_cmd = self._get_link_cmd()
 

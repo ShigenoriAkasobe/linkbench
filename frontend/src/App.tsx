@@ -30,7 +30,6 @@ export default function App() {
       <header className="bg-slate-900/80 border-b border-slate-800 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-[1400px] mx-auto px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🔗</span>
             <div>
               <h1 className="text-base font-bold text-white tracking-tight leading-tight">
                 LinkBench
@@ -57,7 +56,7 @@ export default function App() {
                   }}
                 >
                   {currentLinker === btn.label ? (
-                    <span className="animate-pulse">⏳ {btn.label}</span>
+                    <span className="animate-pulse">{btn.label}</span>
                   ) : (
                     btn.label
                   )}
@@ -75,7 +74,7 @@ export default function App() {
                   : 'bg-sky-800/70 hover:bg-sky-700/70 text-sky-200 active:scale-95'
               }`}
             >
-              {running ? '実行中...' : '▶ 全て実行'}
+              {running ? 'Running...' : 'Run All'}
             </button>
 
             {/* リセット */}

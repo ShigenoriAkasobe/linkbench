@@ -29,8 +29,8 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
   return (
     <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 h-full">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
-          <span>🖥️</span> CPU コア使用率
+        <h2 className="text-sm font-semibold text-slate-300">
+          CPU Core Usage
         </h2>
         <div className="flex items-center gap-2 text-[11px]">
           {currentLinker && (
@@ -39,7 +39,7 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
             </span>
           )}
           <span className="text-slate-500">
-            平均{' '}
+            Avg{' '}
             <span className="text-slate-300 font-mono">
               {avgUsage.toFixed(0)}%
             </span>
@@ -69,10 +69,10 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
       {/* 凡例 */}
       <div className="mt-2 flex items-center justify-center gap-3 text-[10px] text-slate-600">
         {[
-          { label: '低', color: '#1a2332' },
-          { label: '中', color: '#254540' },
-          { label: '高', color: '#4d3a28' },
-          { label: '最大', color: '#4d2828' },
+          { label: 'Low', color: '#1a2332' },
+          { label: 'Mid', color: '#254540' },
+          { label: 'High', color: '#4d3a28' },
+          { label: 'Max', color: '#4d2828' },
         ].map((l) => (
           <span key={l.label} className="flex items-center gap-1">
             <span

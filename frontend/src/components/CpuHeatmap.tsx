@@ -28,13 +28,13 @@ export default function CpuHeatmap({ results, numCores }: Props) {
 
   return (
     <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 h-full">
-      <h2 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
-        <span>🔥</span> コア別ヒートマップ
+      <h2 className="text-sm font-semibold text-slate-300 mb-2">
+        Core Heatmap
       </h2>
 
       {successResults.length === 0 ? (
         <div className="flex items-center justify-center h-36 text-xs text-slate-600">
-          ベンチマーク未実行
+          No data
         </div>
       ) : (
         <div className="space-y-3">

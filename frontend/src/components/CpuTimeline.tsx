@@ -52,8 +52,8 @@ export default function CpuTimeline({ results }: Props) {
 
   return (
     <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40">
-      <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-1.5">
-        <span>📈</span> CPU 使用率タイムライン
+      <h2 className="text-sm font-semibold text-slate-300 mb-3">
+        CPU Timeline
       </h2>
 
       <div className="grid grid-cols-3 gap-3">
@@ -116,7 +116,7 @@ export default function CpuTimeline({ results }: Props) {
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-20 text-[10px] text-slate-600">
-                  待機中
+                  Idle
                 </div>
               )}
             </div>

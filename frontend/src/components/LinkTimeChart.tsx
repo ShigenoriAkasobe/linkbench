@@ -34,13 +34,13 @@ export default function LinkTimeChart({ results }: Props) {
 
   return (
     <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 h-full">
-      <h2 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-1.5">
-        <span>⚡</span> リンク時間比較
+      <h2 className="text-sm font-semibold text-slate-300 mb-3">
+        Link Time
       </h2>
 
       {data.length === 0 ? (
         <div className="flex items-center justify-center h-36 text-xs text-slate-600">
-          ベンチマーク未実行
+          No data
         </div>
       ) : (
         <>
@@ -78,8 +78,8 @@ export default function LinkTimeChart({ results }: Props) {
                   fontSize: 12,
                 }}
                 formatter={(value) => [
-                  `${Number(value).toFixed(4)} 秒`,
-                  'リンク時間',
+                  `${Number(value).toFixed(4)}s`,
+                  'Link Time',
                 ]}
               />
               <Bar dataKey="time" radius={[0, 4, 4, 0]} barSize={22}>
