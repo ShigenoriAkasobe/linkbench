@@ -239,7 +239,14 @@ async def root():
     """ルートアクセス時にフロントエンドの案内を返す"""
     from fastapi.responses import HTMLResponse
     return HTMLResponse(
-        "<h2>LinkBench API Server</h2>"
-        "<p>Open the frontend at <a href='http://localhost:5173'>http://localhost:5173</a></p>"
-        "<p>API docs: <a href='/docs'>/docs</a></p>"
+        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>LinkBench API</title></head>"
+        "<body style='background:#0a0f1a;color:#94a3b8;font-family:system-ui,sans-serif;"
+        "display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0'>"
+        "<div style='text-align:center'>"
+        "<h2 style='color:#e2e8f0;font-size:1.25rem;margin-bottom:0.5rem'>LinkBench API Server</h2>"
+        "<p>Open the frontend at "
+        "<a href='http://localhost:5173' style='color:#38bdf8'>http://localhost:5173</a></p>"
+        "<p style='margin-top:0.75rem;font-size:0.85rem;color:#475569'>"
+        "API docs: <a href='/docs' style='color:#38bdf8'>/docs</a></p>"
+        "</div></body></html>"
     )
