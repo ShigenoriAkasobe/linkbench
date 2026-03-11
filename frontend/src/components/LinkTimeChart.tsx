@@ -78,6 +78,7 @@ export default function LinkTimeChart({ results }: Props) {
                     color: '#e2e8f0',
                     fontSize: 12,
                   }}
+                  itemStyle={{ color: '#e2e8f0' }}
                   formatter={(value) => [
                     `${Number(value).toFixed(4)}s`,
                     'Link Time',
