@@ -136,7 +136,7 @@ async def _run_benchmark(linker_name: str | None = None):
 
     runner = MySQLBenchmarkRunner(
         project_root=PROJECT_ROOT,
-        cpu_interval=0.05,
+        cpu_interval=0.025,
     )
 
     async def send_status(message: str):
