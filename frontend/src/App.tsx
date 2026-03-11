@@ -35,7 +35,7 @@ export default function App() {
                 LinkBench
               </h1>
               <p className="text-[10px] text-slate-500">
-                MySQL (mysqld) Linker Benchmark
+                Linker Benchmark
               </p>
             </div>
           </div>
