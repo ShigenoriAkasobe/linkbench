@@ -27,17 +27,17 @@ export default function CpuHeatmap({ results, numCores }: Props) {
   );
 
   return (
-    <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 h-full">
-      <h2 className="text-sm font-semibold text-slate-300 mb-2">
+    <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 h-full flex flex-col">
+      <h2 className="text-sm font-semibold text-slate-300 mb-1">
         Core Heatmap
       </h2>
 
       {successResults.length === 0 ? (
-        <div className="flex items-center justify-center h-36 text-xs text-slate-600">
+        <div className="flex-1 flex items-center justify-center text-xs text-slate-600">
           No data
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex-1 flex flex-col gap-1 min-h-0">
           {successResults.map((r) => {
             const maxSamples = 80;
             const step = Math.max(
@@ -48,8 +48,8 @@ export default function CpuHeatmap({ results, numCores }: Props) {
             const coreCount = Math.min(r.num_cores || numCores, 32);
 
             return (
-              <div key={r.linker_name}>
-                <div className="flex items-center gap-2 mb-1">
+              <div key={r.linker_name} className="flex-1 flex flex-col min-h-0">
+                <div className="flex items-center gap-2">
                   <span
                     className="text-[11px] font-medium"
                     style={{ color: COLORS[r.linker_name] }}
@@ -60,34 +60,26 @@ export default function CpuHeatmap({ results, numCores }: Props) {
                     {r.link_time.toFixed(3)}s · {r.cpu_history.length} samples
                   </span>
                 </div>
-                <div className="overflow-x-auto">
-                  <div
-                    className="inline-flex flex-col"
-                    style={{ minWidth: '100%' }}
-                  >
-                    {Array.from({ length: coreCount }, (_, coreIdx) => (
-                      <div key={coreIdx} className="flex items-center">
-                        <div className="flex flex-1">
-                          {samples.map((snap, sIdx) => (
-                            <div
-                              key={sIdx}
-                              className="flex-1 min-w-[2px]"
-                              style={{
-                                height: '3px',
-                                backgroundColor: getHeatColor(
-                                  snap.cores[coreIdx] ?? 0,
-                                ),
-                              }}
-                              title={`Core ${coreIdx}: ${(snap.cores[coreIdx] ?? 0).toFixed(1)}% @ ${snap.timestamp.toFixed(2)}s`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="flex-1 flex flex-col min-h-0">
+                  {Array.from({ length: coreCount }, (_, coreIdx) => (
+                    <div key={coreIdx} className="flex flex-1 min-h-0">
+                      {samples.map((snap, sIdx) => (
+                        <div
+                          key={sIdx}
+                          className="flex-1 min-w-[2px]"
+                          style={{
+                            backgroundColor: getHeatColor(
+                              snap.cores[coreIdx] ?? 0,
+                            ),
+                          }}
+                          title={`Core ${coreIdx}: ${(snap.cores[coreIdx] ?? 0).toFixed(1)}% @ ${snap.timestamp.toFixed(2)}s`}
+                        />
+                      ))}
+                    </div>
+                  ))}
                 </div>
                 {samples.length > 0 && (
-                  <div className="flex justify-between mt-0.5">
+                  <div className="flex justify-between">
                     <span className="text-[8px] text-slate-600">0s</span>
                     <span className="text-[8px] text-slate-600">
                       {samples[samples.length - 1].timestamp.toFixed(1)}s

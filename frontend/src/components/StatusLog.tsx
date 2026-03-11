@@ -4,11 +4,11 @@ interface Props {
 
 export default function StatusLog({ messages }: Props) {
   return (
-    <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 h-full flex flex-col">
-      <h2 className="text-sm font-semibold text-slate-300 mb-2">
+    <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 h-full flex flex-col">
+      <h2 className="text-sm font-semibold text-slate-300 mb-1">
         Log
       </h2>
-      <div className="flex-1 bg-slate-900/50 rounded-lg p-3 overflow-y-auto font-mono text-[11px] space-y-0.5 min-h-[120px] max-h-[200px]">
+      <div className="flex-1 bg-slate-900/50 rounded-lg p-2 overflow-y-auto font-mono text-[11px] space-y-0.5 min-h-0">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full text-slate-600 text-xs font-sans">
             Idle

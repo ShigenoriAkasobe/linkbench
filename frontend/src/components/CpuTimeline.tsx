@@ -51,18 +51,18 @@ export default function CpuTimeline({ results }: Props) {
   }, [successResults]);
 
   return (
-    <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40">
-      <h2 className="text-sm font-semibold text-slate-300 mb-3">
+    <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 h-full flex flex-col">
+      <h2 className="text-sm font-semibold text-slate-300 mb-2">
         CPU Timeline
       </h2>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
         {ALL_LINKERS.map((linkerInfo) => {
           const entry = perLinkerData.get(linkerInfo.name);
           return (
             <div
               key={linkerInfo.name}
-              className="bg-slate-900/40 rounded-lg p-3"
+              className="bg-slate-900/40 rounded-lg p-2 flex flex-col min-h-0"
             >
               <div className="flex items-center justify-between mb-1">
                 <span
@@ -79,11 +79,12 @@ export default function CpuTimeline({ results }: Props) {
               </div>
 
               {entry ? (
-                <ResponsiveContainer width="100%" height={80}>
-                  <AreaChart
-                    data={entry.data}
-                    margin={{ top: 2, right: 2, left: -25, bottom: 0 }}
-                  >
+                <div className="flex-1 min-h-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={entry.data}
+                      margin={{ top: 2, right: 2, left: -25, bottom: 0 }}
+                    >
                     <YAxis
                       domain={[0, 100]}
                       tick={{ fill: '#475569', fontSize: 9 }}
@@ -112,10 +113,11 @@ export default function CpuTimeline({ results }: Props) {
                       fillOpacity={0.15}
                       strokeWidth={1.5}
                     />
-                  </AreaChart>
-                </ResponsiveContainer>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
               ) : (
-                <div className="flex items-center justify-center h-20 text-[10px] text-slate-600">
+                <div className="flex-1 flex items-center justify-center text-[10px] text-slate-600">
                   Idle
                 </div>
               )}

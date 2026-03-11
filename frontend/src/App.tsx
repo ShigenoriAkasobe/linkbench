@@ -25,7 +25,7 @@ export default function App() {
   } = useWebSocket();
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col">
+    <div className="h-screen bg-slate-950 flex flex-col overflow-hidden">
       {/* ヘッダー */}
       <header className="bg-slate-900/80 border-b border-slate-800 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-[1400px] mx-auto px-4 py-2.5 flex items-center justify-between">
@@ -102,13 +102,13 @@ export default function App() {
       </header>
 
       {/* ダッシュボード */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 py-3">
-        <div className="grid grid-cols-12 gap-3">
+      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 py-2 min-h-0">
+        <div className="grid grid-cols-12 gap-2 h-full" style={{ gridTemplateRows: '1fr 1fr 3fr' }}>
           {/* Row 1: リンク時間 + CPU グリッド */}
-          <div className="col-span-5">
+          <div className="col-span-5 min-h-0">
             <LinkTimeChart results={results} />
           </div>
-          <div className="col-span-7">
+          <div className="col-span-7 min-h-0">
             <CpuGrid
               liveCpu={liveCpu}
               numCores={numCores}
@@ -117,15 +117,15 @@ export default function App() {
           </div>
 
           {/* Row 2: CPU タイムライン */}
-          <div className="col-span-12">
+          <div className="col-span-12 min-h-0">
             <CpuTimeline results={results} />
           </div>
 
           {/* Row 3: ヒートマップ + ログ */}
-          <div className="col-span-8">
+          <div className="col-span-8 min-h-0">
             <CpuHeatmap results={results} numCores={numCores} />
           </div>
-          <div className="col-span-4">
+          <div className="col-span-4 min-h-0">
             <StatusLog messages={statusMessages} />
           </div>
         </div>

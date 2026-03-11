@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { CpuSnapshot } from '../types';
 
 interface Props {
@@ -16,6 +16,24 @@ function getCpuColor(usage: number): string {
   return '#4d2828';
 }
 
+function bestColumns(n: number, containerWidth: number, containerHeight: number): number {
+  if (n === 0 || containerWidth === 0 || containerHeight === 0) return 1;
+  const aspect = containerWidth / containerHeight;
+  let best = 1;
+  let bestDiff = Infinity;
+  for (let c = 1; c <= n; c++) {
+    if (n % c !== 0) continue;
+    const r = n / c;
+    const gridAspect = c / r;
+    const diff = Math.abs(gridAspect - aspect);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = c;
+    }
+  }
+  return best;
+}
+
 export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
   const cores = useMemo(() => {
     if (liveCpu?.cores) return liveCpu.cores;
@@ -24,11 +42,30 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
 
   const avgUsage =
     cores.length > 0 ? cores.reduce((a, b) => a + b, 0) / cores.length : 0;
-  const cols = Math.min(cores.length, 16);
+
+  const [gridSize, setGridSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const gridRef = useCallback((node: HTMLDivElement | null) => {
+    if (!node) return;
+    const obs = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      setGridSize((prev) =>
+        prev.w === Math.round(width) && prev.h === Math.round(height)
+          ? prev
+          : { w: Math.round(width), h: Math.round(height) },
+      );
+    });
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, []);
+
+  const cols = useMemo(
+    () => bestColumns(cores.length, gridSize.w, gridSize.h),
+    [cores.length, gridSize.w, gridSize.h],
+  );
 
   return (
-    <div className="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40 h-full">
-      <div className="flex items-center justify-between mb-3">
+    <div className="bg-slate-800/40 rounded-xl p-3 border border-slate-700/40 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-2">
         <h2 className="text-sm font-semibold text-slate-300">
           CPU Core Usage
         </h2>
@@ -48,7 +85,8 @@ export default function CpuGrid({ liveCpu, numCores, currentLinker }: Props) {
       </div>
 
       <div
-        className="grid gap-1"
+        ref={gridRef}
+        className="flex-1 grid gap-1 content-center px-4"
         style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
       >
         {cores.map((usage, i) => (
