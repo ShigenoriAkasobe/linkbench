@@ -110,7 +110,7 @@ async def _run_benchmark(num_modules: int):
     runner = BenchmarkRunner(
         project_root=PROJECT_ROOT,
         num_modules=num_modules,
-        cpu_interval=0.2,
+        cpu_interval=0.05,
     )
 
     results_data = []
@@ -181,7 +181,7 @@ async def _run_benchmark(num_modules: int):
             })
 
             if result.success:
-                await send_status(f"{result.display_name}: {result.link_time:.4f} 秒")
+                await send_status(f"{result.display_name}: {result.link_time:.4f} 秒 (平均)")
             else:
                 await send_status(f"{result.display_name}: エラー - {result.error}")
 

@@ -33,9 +33,16 @@ export function useWebSocket(): UseWebSocketReturn {
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    wsRef.current = ws;
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => {
+      // 古いインスタンスのイベントは無視
+      if (wsRef.current !== ws) return;
+      setConnected(true);
+    };
     ws.onclose = () => {
+      // 古いインスタンスのイベントは無視（StrictMode対策）
+      if (wsRef.current !== ws) return;
       setConnected(false);
       // 再接続を試行（タイマー重複防止）
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
@@ -91,8 +98,6 @@ export function useWebSocket(): UseWebSocketReturn {
         console.error('WebSocket message handling error:', err);
       }
     };
-
-    wsRef.current = ws;
   }, []);
 
   useEffect(() => {

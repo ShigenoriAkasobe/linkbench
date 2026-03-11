@@ -70,13 +70,15 @@ class BenchmarkRunner:
         bench_src_dir: str = "bench_src",
         build_dir: str = "build",
         num_modules: int = 500,
-        cpu_interval: float = 0.2,
+        cpu_interval: float = 0.05,
+        min_link_duration: float = 2.0,
     ):
         self.project_root = project_root
         self.bench_src_dir = os.path.join(project_root, bench_src_dir)
         self.build_dir = os.path.join(project_root, build_dir)
         self.num_modules = num_modules
         self.cpu_interval = cpu_interval
+        self.min_link_duration = min_link_duration
         self._status_callback = None
         self._cpu_callback = None
 
@@ -165,36 +167,55 @@ class BenchmarkRunner:
         monitor = CpuMonitor(interval=self.cpu_interval)
         monitor.start(callback=self._cpu_callback)
 
+        total_elapsed = 0.0
+        iterations = 0
+        last_returncode = 0
+        last_stderr = ""
+
         start_time = time.monotonic()
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True)
-            elapsed = time.monotonic() - start_time
-            cpu_result = monitor.stop()
+            # min_link_duration 秒以上になるまでリンクを繰り返し、
+            # 十分な CPU サンプルを取得する
+            while True:
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                last_returncode = proc.returncode
+                last_stderr = proc.stderr
+                iterations += 1
+                total_elapsed = time.monotonic() - start_time
 
-            if proc.returncode != 0:
+                if last_returncode != 0:
+                    break
+                if total_elapsed >= self.min_link_duration:
+                    break
+
+            cpu_result = monitor.stop()
+            avg_time = total_elapsed / iterations if iterations > 0 else total_elapsed
+
+            if last_returncode != 0:
                 return BenchmarkResult(
                     linker_name=linker_config.name,
                     display_name=linker_config.display_name,
-                    link_time=elapsed,
+                    link_time=avg_time,
                     cpu_data=cpu_result,
                     success=False,
-                    error=proc.stderr,
+                    error=last_stderr,
                 )
 
             return BenchmarkResult(
                 linker_name=linker_config.name,
                 display_name=linker_config.display_name,
-                link_time=round(elapsed, 4),
+                link_time=round(avg_time, 4),
                 cpu_data=cpu_result,
                 success=True,
             )
         except Exception as e:
-            elapsed = time.monotonic() - start_time
+            total_elapsed = time.monotonic() - start_time
             cpu_result = monitor.stop()
+            avg_time = total_elapsed / max(iterations, 1)
             return BenchmarkResult(
                 linker_name=linker_config.name,
                 display_name=linker_config.display_name,
-                link_time=elapsed,
+                link_time=avg_time,
                 cpu_data=cpu_result,
                 success=False,
                 error=str(e),
