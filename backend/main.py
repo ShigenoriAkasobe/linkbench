@@ -11,8 +11,6 @@ from contextlib import asynccontextmanager
 import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 from backend.benchmark import (
     MySQLBenchmarkRunner,
@@ -98,6 +96,15 @@ async def benchmark_status():
 async def benchmark_results():
     """最新のベンチマーク結果を返す"""
     return {"results": benchmark_state["results"]}
+
+
+@app.post("/api/benchmark/reset")
+async def reset_benchmark():
+    """ベンチマーク結果をリセット"""
+    if benchmark_state["running"]:
+        return {"error": "ベンチマーク実行中はリセットできません"}
+    benchmark_state["results"] = None
+    return {"status": "reset"}
 
 
 @app.post("/api/benchmark/start")
@@ -227,18 +234,12 @@ async def websocket_endpoint(ws: WebSocket):
         connected_clients.discard(ws)
 
 
-# フロントエンド静的ファイル配信
-FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")
-if os.path.isdir(FRONTEND_DIST):
-    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        """フロントエンドのindex.htmlを配信 (SPA)"""
-        # API・WebSocketパスはスキップ
-        if full_path.startswith("api") or full_path.startswith("ws"):
-            return
-        file_path = os.path.join(FRONTEND_DIST, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+@app.get("/")
+async def root():
+    """ルートアクセス時にフロントエンドの案内を返す"""
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        "<h2>LinkBench API Server</h2>"
+        "<p>フロントエンドは <a href='http://localhost:5173'>http://localhost:5173</a> にアクセスしてください。</p>"
+        "<p>API ドキュメント: <a href='/docs'>/docs</a></p>"
+    )

@@ -127,11 +127,12 @@ export function useWebSocket(): UseWebSocketReturn {
     await fetch(url, { method: 'POST' });
   }, []);
 
-  const reset = useCallback(() => {
+  const reset = useCallback(async () => {
     setResults([]);
     setStatusMessages([]);
     setLiveCpu(null);
     setCurrentLinker(null);
+    await fetch('/api/benchmark/reset', { method: 'POST' });
   }, []);
 
   return {

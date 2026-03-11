@@ -49,7 +49,7 @@ export default function App() {
                   key={btn.name}
                   onClick={() => startBenchmark(btn.name)}
                   disabled={running || !connected}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95"
+                  className="px-3 py-1.5 rounded-md text-xs font-medium transition-all disabled:opacity-30 disabled:cursor-not-allowed active:scale-95 cursor-pointer disabled:cursor-not-allowed hover:brightness-125"
                   style={{
                     backgroundColor: running ? undefined : `${btn.color}18`,
                     color: running ? '#475569' : btn.color,
@@ -69,9 +69,9 @@ export default function App() {
             <button
               onClick={() => startBenchmark()}
               disabled={running || !connected}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 running
-                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                  ? 'bg-slate-800 text-slate-600 !cursor-not-allowed'
                   : 'bg-sky-800/70 hover:bg-sky-700/70 text-sky-200 active:scale-95'
               }`}
             >
@@ -82,7 +82,7 @@ export default function App() {
             <button
               onClick={reset}
               disabled={running || results.length === 0}
-              className="px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-300 bg-slate-800/50 hover:bg-slate-700/50 disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+              className="px-2.5 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-300 bg-slate-800/50 hover:bg-slate-700/50 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition-all"
             >
               ↺
             </button>
