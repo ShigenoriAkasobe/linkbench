@@ -1,0 +1,22 @@
+[Unit]
+Description=LinkBench — Linker Performance Benchmark
+After=network.target
+
+[Service]
+Type=exec
+User=__USER__
+WorkingDirectory=__PROJECT_ROOT__
+ExecStart=__PROJECT_ROOT__/scripts/start.sh
+Restart=on-failure
+RestartSec=5
+
+# 環境変数でポートなどを変更可能
+Environment=LINKBENCH_HOST=0.0.0.0
+Environment=LINKBENCH_PORT=28000
+Environment=LINKBENCH_WORKERS=1
+
+# パス (Node.js / npm が見えるように)
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

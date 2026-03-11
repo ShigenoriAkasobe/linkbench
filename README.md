@@ -38,7 +38,10 @@ linkbench/
 │           └── StatusLog.tsx      # 実行ログ
 ├── scripts/
 │   ├── install_linkers.sh         # リンカインストールスクリプト
-│   └── prepare_mysql.sh           # MySQL ソース取得・ビルドスクリプト
+│   ├── prepare_mysql.sh           # MySQL ソース取得・ビルドスクリプト
+│   ├── start.sh                   # 本番起動スクリプト (ビルド + uvicorn)
+│   ├── install_service.sh         # systemd サービス登録 / 解除
+│   └── linkbench.service          # systemd ユニットファイル (テンプレート)
 └── README.md
 ```
 
@@ -101,6 +104,8 @@ cd ..
 
 ### 6. 起動
 
+#### 開発モード (ホットリロード)
+
 2 つのターミナルを使います。
 
 **ターミナル 1 — バックエンド (FastAPI + ホットリロード):**
@@ -119,6 +124,45 @@ npm run dev
 
 ブラウザで **http://localhost:5173** を開きます。
 API・WebSocket は Vite のプロキシ経由でバックエンド (port 8000) に転送されます。
+
+#### 本番モード (単一プロセス)
+
+フロントエンドをビルドし、ポート 8000 だけですべて配信します。
+
+```bash
+./scripts/start.sh
+```
+
+ブラウザで **http://localhost:28000** を開きます。
+
+環境変数でカスタマイズ可能:
+
+| 変数 | デフォルト | 説明 |
+|------|-----------|------|
+| `LINKBENCH_HOST` | `0.0.0.0` | バインドアドレス |
+| `LINKBENCH_PORT` | `28000` | ポート番号 |
+| `LINKBENCH_WORKERS` | `1` | ワーカー数 |
+
+### 7. systemd サービスとして常駐させる
+
+```bash
+# インストール & 起動
+sudo ./scripts/install_service.sh install
+
+# 状態確認
+sudo systemctl status linkbench
+
+# ログ確認 (リアルタイム)
+sudo journalctl -u linkbench -f
+
+# 再起動
+sudo systemctl restart linkbench
+
+# アンインストール
+sudo ./scripts/install_service.sh uninstall
+```
+
+サービスはマシン起動時に自動的に開始されます。
 
 ## 使い方
 

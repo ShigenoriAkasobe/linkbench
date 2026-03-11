@@ -244,9 +244,16 @@ async def websocket_endpoint(ws: WebSocket):
         connected_clients.discard(ws)
 
 
+DIST_DIR = os.path.join(PROJECT_ROOT, "frontend", "dist")
+
+
 @app.get("/")
 async def root():
-    """ルートアクセス時にフロントエンドの案内を返す"""
+    """ルートアクセス — dist があればフロントエンドを返す"""
+    index = os.path.join(DIST_DIR, "index.html")
+    if os.path.isfile(index):
+        from fastapi.responses import FileResponse
+        return FileResponse(index, media_type="text/html")
     from fastapi.responses import HTMLResponse
     return HTMLResponse(
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>LinkBench API</title></head>"
@@ -260,3 +267,9 @@ async def root():
         "API docs: <a href='/docs' style='color:#38bdf8'>/docs</a></p>"
         "</div></body></html>"
     )
+
+
+# frontend/dist/ が存在すれば静的ファイルを配信 (SPA フォールバック付き)
+if os.path.isdir(DIST_DIR):
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="static")
