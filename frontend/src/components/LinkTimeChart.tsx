@@ -71,6 +71,7 @@ export default function LinkTimeChart({ results }: Props) {
                   stroke="#334155"
                 />
                 <Tooltip
+                  cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
                   contentStyle={{
                     backgroundColor: '#1e293b',
                     border: '1px solid #334155',
