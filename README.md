@@ -1,6 +1,6 @@
 # 🔗 LinkBench — リンカ パフォーマンス ベンチマーク
 
-GNU ld / LLVM lld / mold の3つのリンカのリンク速度と、リンク中の**論理プロセッサごとのCPU使用率**を計測・可視化するウェブアプリケーションです。
+GNU ld / LLVM lld / mold の 3 つのリンカで **MySQL (mysqld)** をリンクし、リンク速度と**論理プロセッサごとの CPU 使用率**を計測・可視化するウェブアプリケーションです。
 
 ![Dark Theme](https://img.shields.io/badge/theme-dark-1e293b)
 ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688)
@@ -8,34 +8,35 @@ GNU ld / LLVM lld / mold の3つのリンカのリンク速度と、リンク中
 
 ## 機能
 
-- **リンク時間比較**: 3つのリンカのリンク時間を横棒グラフで比較、スピードアップ倍率も表示
-- **リアルタイムCPUモニター**: リンク中の各論理プロセッサの使用率をタスクマネージャー風のグリッドで表示
-- **CPUタイムライン**: リンカ別のCPU使用率推移を折れ線グラフで表示
-- **ヒートマップ**: コア別×時間のCPU使用率をヒートマップで可視化（moldの並列性が一目瞭然）
-- **実行ログ**: ベンチマークの進行状況をリアルタイムで表示
+- **リンク時間比較**: 3 つのリンカのリンク時間を横棒グラフで比較（スピードアップ倍率付き）
+- **個別 / 一括実行**: リンカごとの個別実行ボタンと「全て実行」ボタン
+- **リアルタイム CPU モニター**: リンク中の各論理プロセッサの使用率をグリッド表示
+- **CPU タイムライン**: リンカ別の CPU 使用率推移をエリアチャートで表示
+- **ヒートマップ**: コア別 × 時間の CPU 使用率をヒートマップで可視化（mold の並列性が一目瞭然）
+- **実行ログ**: ベンチマークの進行状況をリアルタイム表示
 
 ## アーキテクチャ
 
 ```
 linkbench/
-├── backend/           # FastAPI バックエンド
-│   ├── main.py        # APIサーバー + WebSocket
-│   ├── benchmark.py   # ベンチマーク実行エンジン
-│   ├── cpu_monitor.py # CPU使用率モニター (psutil)
+├── backend/                       # FastAPI バックエンド
+│   ├── main.py                    # API サーバー + WebSocket
+│   ├── benchmark.py               # MySQL リンクベンチマーク実行エンジン
+│   ├── cpu_monitor.py             # CPU 使用率モニター (psutil)
 │   └── requirements.txt
-├── frontend/          # React + Vite + TypeScript + Tailwind CSS
+├── frontend/                      # React + Vite + TypeScript + Tailwind CSS
 │   └── src/
-│       ├── App.tsx
-│       ├── useWebSocket.ts
+│       ├── App.tsx                # メインダッシュボード
+│       ├── useWebSocket.ts        # WebSocket 接続・状態管理
 │       └── components/
-│           ├── LinkTimeChart.tsx  # リンク時間比較チャート
-│           ├── CpuGrid.tsx        # リアルタイムCPUグリッド
-│           ├── CpuTimeline.tsx    # CPU使用率タイムライン
+│           ├── LinkTimeChart.tsx   # リンク時間比較チャート
+│           ├── CpuGrid.tsx        # リアルタイム CPU グリッド
+│           ├── CpuTimeline.tsx    # CPU 使用率タイムライン
 │           ├── CpuHeatmap.tsx     # コア別ヒートマップ
 │           └── StatusLog.tsx      # 実行ログ
 ├── scripts/
-│   ├── install_linkers.sh        # リンカインストールスクリプト
-│   └── generate_bench_src.py     # ベンチマーク用C++ソース生成
+│   ├── install_linkers.sh         # リンカインストールスクリプト
+│   └── prepare_mysql.sh           # MySQL ソース取得・ビルドスクリプト
 └── README.md
 ```
 
@@ -43,37 +44,25 @@ linkbench/
 
 ### 1. 前提条件
 
-以下がインストールされている必要があります:
-
 - **Linux** (Ubuntu 22.04+ 推奨)
 - **Python 3.10+**
 - **Node.js 18+** & npm
-- **GCC / G++**
+- **G++** (cmake / ninja も必要)
 
 ### 2. リンカのインストール
 
-3つのリンカをインストールします:
-
 ```bash
-# インストールスクリプトを実行
 chmod +x scripts/install_linkers.sh
 ./scripts/install_linkers.sh
 ```
 
-手動でインストールする場合:
+手動の場合:
 
 ```bash
-# GNU ld (通常はプリインストール済み)
-sudo apt-get install -y binutils
-
-# LLVM lld
-sudo apt-get install -y lld
-
-# mold
-sudo apt-get install -y mold
+sudo apt-get install -y binutils lld mold
 ```
 
-インストールの確認:
+確認:
 
 ```bash
 ld --version        # GNU ld
@@ -81,78 +70,75 @@ ld.lld --version    # LLVM lld
 mold --version      # mold
 ```
 
-### 3. バックエンド (FastAPI) のセットアップ
+### 3. MySQL オブジェクトファイルの準備
+
+MySQL ソースをクローンし、オブジェクトファイルのコンパイルとリンクコマンドの抽出を行います（初回のみ、30 分程度かかります）。
 
 ```bash
-# Python 仮想環境を作成・有効化
+chmod +x scripts/prepare_mysql.sh
+./scripts/prepare_mysql.sh
+```
+
+完了すると `mysql_bench/` ディレクトリにビルド成果物と `link_command.txt` が生成されます。
+
+### 4. バックエンドのセットアップ
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
-
-# 依存パッケージをインストール
 pip install -r backend/requirements.txt
 ```
 
-### 4. フロントエンドのビルド
+### 5. フロントエンドのセットアップ
 
 ```bash
 cd frontend
 npm install
-npm run build
 cd ..
 ```
 
-### 5. サーバー起動
+### 6. 起動
+
+2 つのターミナルを使います。
+
+**ターミナル 1 — バックエンド (FastAPI + ホットリロード):**
 
 ```bash
-source venv/bin/activate
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
-```
-
-ブラウザで **http://localhost:8000** を開きます。
-
-### 開発モード
-
-フロントエンドをホットリロード付きで開発する場合:
-
-```bash
-# ターミナル1: バックエンド
 source venv/bin/activate
 uvicorn backend.main:app --reload --port 8000
+```
 
-# ターミナル2: フロントエンド (Vite dev server)
+**ターミナル 2 — フロントエンド (Vite dev server):**
+
+```bash
 cd frontend
 npm run dev
 ```
 
-開発時は **http://localhost:5173** にアクセスします（APIは自動的にバックエンドにプロキシされます）。
+ブラウザで **http://localhost:5173** を開きます。
+API・WebSocket は Vite のプロキシ経由でバックエンド (port 8000) に転送されます。
 
 ## 使い方
 
-1. ブラウザでアプリを開く
-2. 画面上部の「モジュール数」を選択（デフォルト: 500）
-   - モジュール数が多いほどリンク時間が長くなり、差が明確になります
-3. **「▶ ベンチマーク開始」** ボタンをクリック
-4. 以下の順序で自動実行されます:
-   - C++ ベンチマーク用ソースコード生成（多数の翻訳単位）
-   - 全ソースファイルのコンパイル（`g++ -O2`、全コア並列）
-   - GNU ld でリンク → CPU使用率を記録
-   - LLVM lld でリンク → CPU使用率を記録
-   - mold でリンク → CPU使用率を記録
-5. 結果がリアルタイムで画面に表示されます
+1. ブラウザでダッシュボードを開く
+2. ヘッダーのボタンで実行方法を選択:
+   - **個別ボタン** (`GNU ld` / `LLVM lld` / `mold`): 選択したリンカのみ実行
+   - **「▶ 全て実行」**: 3 つのリンカを順番に実行
+3. リンク中は以下がリアルタイム更新されます:
+   - CPU グリッド: 各論理プロセッサの使用率
+   - 実行ログ: 進行状況
+4. 完了後、リンク時間チャート・CPU タイムライン・ヒートマップに結果が表示されます
+5. **↺ リセットボタン** で結果をクリアできます
 
 ## ベンチマークの仕組み
 
-### ソースコード生成
+### リンク対象
 
-`scripts/generate_bench_src.py` が指定数のC++モジュールを生成します:
+MySQL Server (mysqld) のオブジェクトファイルをリンク対象として使用します。`scripts/prepare_mysql.sh` が MySQL 8.0 のソースをクローン・ビルドし、ninja からリンクコマンドを抽出します。各リンカの実行時は `-fuse-ld=` フラグを差し替えてリンクを行います。
 
-- 各モジュールは関数定義、グローバル変数、他モジュールへの参照を含む
-- テンプレートクラス、名前空間、STL利用でシンボルテーブルを大きくする
-- 相互参照によりリンカに実際の解決作業を発生させる
+### CPU 使用率の計測
 
-### CPU使用率の計測
-
-- `psutil` ライブラリで200ms間隔で全論理プロセッサの使用率をサンプリング
+- `psutil` の `cpu_times()` を 50ms 間隔でサンプリングし、差分から使用率を算出
 - WebSocket でリアルタイムにフロントエンドへ送信
 - mold はマルチスレッドリンカのため、多くのコアが高使用率になるのが観察できます
 
@@ -161,7 +147,7 @@ npm run dev
 | リンカ | 開発元 | 特徴 |
 |--------|--------|------|
 | **GNU ld** (bfd) | GNU | 伝統的なリンカ。シングルスレッドで安定だが低速 |
-| **LLVM lld** | LLVM Project | LLVM製の高速リンカ。部分的にマルチスレッド |
+| **LLVM lld** | LLVM Project | LLVM 製の高速リンカ。部分的にマルチスレッド |
 | **mold** | Rui Ueyama | 超高速リンカ。高度な並列処理で桁違いの速度 |
 
 ## ライセンス

@@ -9,7 +9,7 @@ interface UseWebSocketReturn {
   results: LinkerResult[];
   liveCpu: CpuSnapshot | null;
   numCores: number;
-  startBenchmark: () => void;
+  startBenchmark: (linkerName?: string) => void;
   reset: () => void;
 }
 
@@ -79,7 +79,12 @@ export function useWebSocket(): UseWebSocketReturn {
 
         case 'result':
           if (msg.data) {
-            setResults((prev) => [...prev, msg.data!]);
+            setResults((prev) => {
+              const filtered = prev.filter(r => r.linker_name !== msg.data!.linker_name);
+              const next = [...filtered, msg.data!];
+              const order = ['gnu_ld', 'lld', 'mold'];
+              return next.sort((a, b) => order.indexOf(a.linker_name) - order.indexOf(b.linker_name));
+            });
           }
           break;
 
@@ -108,15 +113,18 @@ export function useWebSocket(): UseWebSocketReturn {
     };
   }, [connect]);
 
-  const startBenchmark = useCallback(async () => {
-    setResults([]);
+  const startBenchmark = useCallback(async (linkerName?: string) => {
     setStatusMessages([]);
     setLiveCpu(null);
     setRunning(true);
+    if (!linkerName) {
+      setResults([]);
+    }
 
-    await fetch('/api/benchmark/start', {
-      method: 'POST',
-    });
+    const url = linkerName
+      ? `/api/benchmark/start?linker=${encodeURIComponent(linkerName)}`
+      : '/api/benchmark/start';
+    await fetch(url, { method: 'POST' });
   }, []);
 
   const reset = useCallback(() => {

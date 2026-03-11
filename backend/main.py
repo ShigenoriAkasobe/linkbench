@@ -101,19 +101,20 @@ async def benchmark_results():
 
 
 @app.post("/api/benchmark/start")
-async def start_benchmark():
+async def start_benchmark(linker: str | None = None):
     """ベンチマークを開始"""
     if benchmark_state["running"]:
         return {"error": "ベンチマークは既に実行中です"}
 
-    asyncio.create_task(_run_benchmark())
+    asyncio.create_task(_run_benchmark(linker_name=linker))
     return {"status": "started"}
 
 
-async def _run_benchmark():
+async def _run_benchmark(linker_name: str | None = None):
     """ベンチマーク非同期実行"""
     benchmark_state["running"] = True
-    benchmark_state["results"] = None
+    if linker_name is None:
+        benchmark_state["results"] = None
     loop = asyncio.get_event_loop()
 
     runner = MySQLBenchmarkRunner(
@@ -121,27 +122,31 @@ async def _run_benchmark():
         cpu_interval=0.05,
     )
 
-    results_data = []
-
     async def send_status(message: str):
         await broadcast({"type": "status", "message": message})
 
     try:
-        # MySQL 準備確認
         if not runner.is_prepared():
             await send_status("MySQL オブジェクトファイルが見つかりません。")
             await send_status("scripts/prepare_mysql.sh を実行してください。")
-            await broadcast({"type": "error", "message": "MySQL が準備されていません。scripts/prepare_mysql.sh を先に実行してください。"})
+            await broadcast({"type": "error", "message": "MySQL が準備されていません。"})
             return
 
-        await send_status("MySQL (mysqld) リンクベンチマークを開始します...")
+        # 実行するリンカを決定
+        if linker_name:
+            target_linkers = [l for l in LINKERS if l.name == linker_name]
+            if not target_linkers:
+                await broadcast({"type": "error", "message": f"不明なリンカ: {linker_name}"})
+                return
+            await send_status(f"{target_linkers[0].display_name} のベンチマークを開始...")
+        else:
+            target_linkers = LINKERS
+            await send_status("MySQL (mysqld) リンクベンチマークを開始します...")
 
-        # 各リンカでベンチマーク
-        for linker in LINKERS:
+        for linker in target_linkers:
             benchmark_state["current_linker"] = linker.display_name
             await send_status(f"リンク中: {linker.display_name} (mysqld)...")
 
-            # CPU コールバック（同期→非同期ブリッジ）
             def cpu_callback(snapshot, _linker_name=linker.display_name):
                 asyncio.run_coroutine_threadsafe(
                     broadcast({
@@ -168,20 +173,23 @@ async def _run_benchmark():
                 ],
                 "num_cores": result.cpu_data.num_cores,
             }
-            results_data.append(result_dict)
 
-            await broadcast({
-                "type": "result",
-                "data": result_dict,
-            })
+            # 結果をアップサート
+            stored = benchmark_state["results"] or []
+            stored = [r for r in stored if r["linker_name"] != result_dict["linker_name"]]
+            stored.append(result_dict)
+            linker_order = {l.name: i for i, l in enumerate(LINKERS)}
+            stored.sort(key=lambda r: linker_order.get(r["linker_name"], 99))
+            benchmark_state["results"] = stored
+
+            await broadcast({"type": "result", "data": result_dict})
 
             if result.success:
                 await send_status(f"{result.display_name}: {result.link_time:.4f} 秒")
             else:
                 await send_status(f"{result.display_name}: エラー - {result.error}")
 
-        benchmark_state["results"] = results_data
-        await broadcast({"type": "complete", "results": results_data})
+        await broadcast({"type": "complete", "results": benchmark_state["results"]})
         await send_status("ベンチマーク完了！")
 
     except Exception as e:
@@ -190,7 +198,6 @@ async def _run_benchmark():
     finally:
         benchmark_state["running"] = False
         benchmark_state["current_linker"] = None
-        # クリーンアップ
         try:
             runner.cleanup()
         except Exception:
