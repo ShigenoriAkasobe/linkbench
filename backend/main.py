@@ -14,7 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from backend.benchmark import BenchmarkRunner, LINKERS, get_available_linkers
+from backend.benchmark import (
+    MySQLBenchmarkRunner,
+    LINKERS,
+    get_available_linkers,
+    check_mysql_prepared,
+)
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -74,6 +79,12 @@ async def list_linkers():
     return {"linkers": get_available_linkers()}
 
 
+@app.get("/api/mysql/status")
+async def mysql_status():
+    """MySQL ベンチマーク準備状態を返す"""
+    return {"prepared": check_mysql_prepared(PROJECT_ROOT)}
+
+
 @app.get("/api/benchmark/status")
 async def benchmark_status():
     """ベンチマーク状態を返す"""
@@ -90,26 +101,23 @@ async def benchmark_results():
 
 
 @app.post("/api/benchmark/start")
-async def start_benchmark(num_modules: int = 500):
+async def start_benchmark():
     """ベンチマークを開始"""
     if benchmark_state["running"]:
         return {"error": "ベンチマークは既に実行中です"}
 
-    num_modules = max(50, min(num_modules, 2000))
-
-    asyncio.create_task(_run_benchmark(num_modules))
-    return {"status": "started", "num_modules": num_modules}
+    asyncio.create_task(_run_benchmark())
+    return {"status": "started"}
 
 
-async def _run_benchmark(num_modules: int):
+async def _run_benchmark():
     """ベンチマーク非同期実行"""
     benchmark_state["running"] = True
     benchmark_state["results"] = None
     loop = asyncio.get_event_loop()
 
-    runner = BenchmarkRunner(
+    runner = MySQLBenchmarkRunner(
         project_root=PROJECT_ROOT,
-        num_modules=num_modules,
         cpu_interval=0.05,
     )
 
@@ -118,36 +126,23 @@ async def _run_benchmark(num_modules: int):
     async def send_status(message: str):
         await broadcast({"type": "status", "message": message})
 
-    async def send_cpu(snapshot):
-        await broadcast({
-            "type": "cpu",
-            "linker": benchmark_state["current_linker"],
-            "timestamp": snapshot.timestamp,
-            "cores": snapshot.per_cpu,
-        })
-
     try:
-        # ソース生成
-        await send_status("ベンチマーク用ソースコードを生成中...")
-        await loop.run_in_executor(None, runner.generate_sources)
-        await send_status("ソース生成完了")
+        # MySQL 準備確認
+        if not runner.is_prepared():
+            await send_status("MySQL オブジェクトファイルが見つかりません。")
+            await send_status("scripts/prepare_mysql.sh を実行してください。")
+            await broadcast({"type": "error", "message": "MySQL が準備されていません。scripts/prepare_mysql.sh を先に実行してください。"})
+            return
 
-        # コンパイル
-        await send_status("オブジェクトファイルをコンパイル中...")
-        await loop.run_in_executor(None, runner.compile_objects)
-        await send_status("コンパイル完了")
+        await send_status("MySQL (mysqld) リンクベンチマークを開始します...")
 
         # 各リンカでベンチマーク
         for linker in LINKERS:
             benchmark_state["current_linker"] = linker.display_name
-            await send_status(f"リンク中: {linker.display_name}...")
+            await send_status(f"リンク中: {linker.display_name} (mysqld)...")
 
             # CPU コールバック（同期→非同期ブリッジ）
-            cpu_snapshots = []
-
             def cpu_callback(snapshot, _linker_name=linker.display_name):
-                cpu_snapshots.append(snapshot)
-                # メインループにブロードキャストをスケジュール
                 asyncio.run_coroutine_threadsafe(
                     broadcast({
                         "type": "cpu",
@@ -181,7 +176,7 @@ async def _run_benchmark(num_modules: int):
             })
 
             if result.success:
-                await send_status(f"{result.display_name}: {result.link_time:.4f} 秒 (平均)")
+                await send_status(f"{result.display_name}: {result.link_time:.4f} 秒")
             else:
                 await send_status(f"{result.display_name}: エラー - {result.error}")
 

@@ -1,14 +1,15 @@
-"""ベンチマーク実行モジュール
+"""MySQL ベンチマーク実行モジュール
 
-各リンカ (GNU ld, LLVM lld, mold) でリンクを行い、
+MySQL (mysqld) のオブジェクトファイルを各リンカでリンクし、
 実行時間と CPU 使用率を計測する。
 """
 
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import time
-import glob
 from dataclasses import dataclass, field
 
 from backend.cpu_monitor import CpuMonitor, CpuMonitorResult
@@ -61,26 +62,79 @@ def get_available_linkers() -> list[dict]:
     return result
 
 
-class BenchmarkRunner:
-    """ベンチマーク実行クラス"""
+def check_mysql_prepared(project_root: str) -> bool:
+    """MySQL ベンチマークが準備済みか確認"""
+    mysql_dir = os.path.join(project_root, "mysql_bench")
+    stamp = os.path.join(mysql_dir, ".prepared")
+    return os.path.isfile(stamp)
+
+
+def _extract_link_command(mysql_dir: str) -> list[str] | None:
+    """mysqld のリンクコマンドを取得する
+
+    1. link_command.txt があればそれを使う
+    2. なければ ninja -t commands で取得
+    いずれの場合も既存の -fuse-ld= フラグは除去する
+    """
+    build_dir = os.path.join(mysql_dir, "build")
+
+    raw_cmd = None
+
+    # 方法1: link_command.txt を読む
+    cmd_file = os.path.join(mysql_dir, "link_command.txt")
+    if os.path.isfile(cmd_file):
+        with open(cmd_file, "r") as f:
+            raw_cmd = f.read().strip()
+
+    # 方法2: ninja -t commands で取得
+    if not raw_cmd:
+        try:
+            proc = subprocess.run(
+                ["ninja", "-t", "commands", "runtime_output_directory/mysqld"],
+                capture_output=True, text=True, cwd=build_dir,
+            )
+            if proc.returncode == 0:
+                # 最後のコマンド行 (-o ... mysqld を含む行) を使う
+                for line in reversed(proc.stdout.strip().split("\n")):
+                    if "-o runtime_output_directory/mysqld" in line:
+                        raw_cmd = line
+                        break
+        except FileNotFoundError:
+            pass
+
+    if not raw_cmd:
+        return None
+
+    # ": && " プレフィックスを除去 (ninja の出力形式)
+    raw_cmd = re.sub(r"^:\s*&&\s*", "", raw_cmd)
+    # " && :" サフィックスを除去
+    raw_cmd = re.sub(r"\s*&&\s*:$", "", raw_cmd)
+
+    tokens = shlex.split(raw_cmd)
+    if not tokens:
+        return None
+
+    # -fuse-ld= フラグを除去 (各リンカで差し替えるため)
+    tokens = [t for t in tokens if not t.startswith("-fuse-ld=")]
+
+    return tokens
+
+
+class MySQLBenchmarkRunner:
+    """MySQL (mysqld) を対象としたリンカベンチマーク実行クラス"""
 
     def __init__(
         self,
         project_root: str,
-        bench_src_dir: str = "bench_src",
-        build_dir: str = "build",
-        num_modules: int = 500,
         cpu_interval: float = 0.05,
-        min_link_duration: float = 2.0,
     ):
         self.project_root = project_root
-        self.bench_src_dir = os.path.join(project_root, bench_src_dir)
-        self.build_dir = os.path.join(project_root, build_dir)
-        self.num_modules = num_modules
+        self.mysql_dir = os.path.join(project_root, "mysql_bench")
+        self.build_dir = os.path.join(self.mysql_dir, "build")
         self.cpu_interval = cpu_interval
-        self.min_link_duration = min_link_duration
         self._status_callback = None
         self._cpu_callback = None
+        self._base_link_cmd: list[str] | None = None
 
     def set_callbacks(self, status_callback=None, cpu_callback=None):
         self._status_callback = status_callback
@@ -90,60 +144,43 @@ class BenchmarkRunner:
         if self._status_callback:
             self._status_callback(message)
 
-    def generate_sources(self):
-        """ベンチマーク用ソースコードを生成"""
-        self._emit_status("ベンチマーク用ソースコードを生成中...")
-        gen_script = os.path.join(self.project_root, "scripts", "generate_bench_src.py")
-        subprocess.run(
-            ["python3", gen_script, "-n", str(self.num_modules), "-o", self.bench_src_dir],
-            check=True,
+    def is_prepared(self) -> bool:
+        """MySQL のオブジェクトファイルが準備済みか"""
+        return os.path.isfile(os.path.join(self.mysql_dir, ".prepared"))
+
+    def prepare(self):
+        """MySQL ソースをダウンロード・ビルド"""
+        if self.is_prepared():
+            self._emit_status("MySQL オブジェクトファイルは準備済みです")
+            return
+
+        self._emit_status("MySQL ソースを準備中... (初回は時間がかかります)")
+        script = os.path.join(self.project_root, "scripts", "prepare_mysql.sh")
+        proc = subprocess.run(
+            ["bash", script, self.mysql_dir],
             capture_output=True,
             text=True,
         )
-        self._emit_status(f"ソース生成完了: {self.num_modules} モジュール")
+        if proc.returncode != 0:
+            raise RuntimeError(f"MySQL 準備エラー:\n{proc.stderr}")
+        self._emit_status("MySQL 準備完了")
 
-    def compile_objects(self):
-        """全ソースをオブジェクトファイルにコンパイル（共通処理）"""
-        os.makedirs(self.build_dir, exist_ok=True)
+    def _get_link_cmd(self) -> list[str]:
+        """mysqld のベースリンクコマンドを取得 (キャッシュ)"""
+        if self._base_link_cmd is not None:
+            return self._base_link_cmd
 
-        cpp_files = sorted(glob.glob(os.path.join(self.bench_src_dir, "*.cpp")))
-        total = len(cpp_files)
-        self._emit_status(f"コンパイル中... ({total} ファイル)")
-
-        # 並列コンパイル (make -j 相当)
-        num_jobs = os.cpu_count() or 4
-
-        # まず Makefile を生成（makeの並列性を活用）
-        makefile_path = os.path.join(self.build_dir, "Makefile")
-        obj_targets = []
-        with open(makefile_path, "w") as f:
-            f.write("CXXFLAGS = -c -O2 -std=c++17\n")
-            f.write(f"SRCDIR = {self.bench_src_dir}\n")
-            f.write(f"BUILDDIR = {self.build_dir}\n\n")
-
-            for cpp in cpp_files:
-                base = os.path.basename(cpp)
-                obj = base.replace(".cpp", ".o")
-                obj_path = os.path.join(self.build_dir, obj)
-                obj_targets.append(obj)
-                f.write(f"{obj}: $(SRCDIR)/{base}\n")
-                f.write(f"\tg++ $(CXXFLAGS) -I$(SRCDIR) -o $(BUILDDIR)/{obj} $(SRCDIR)/{base}\n\n")
-
-            f.write("all: " + " ".join(obj_targets) + "\n")
-
-        result = subprocess.run(
-            ["make", "-f", makefile_path, "-j", str(num_jobs), "all"],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"コンパイルエラー:\n{result.stderr}")
-
-        self._emit_status("コンパイル完了")
+        cmd = _extract_link_command(self.mysql_dir)
+        if cmd is None:
+            raise RuntimeError(
+                "mysqld のリンクコマンドを抽出できません。"
+                "prepare_mysql.sh を再実行してください。"
+            )
+        self._base_link_cmd = cmd
+        return cmd
 
     def link_with(self, linker_config: LinkerConfig) -> BenchmarkResult:
-        """指定リンカでリンクを実行し、計測結果を返す"""
+        """指定リンカで mysqld をリンクし、計測結果を返す"""
         if not check_linker_available(linker_config):
             return BenchmarkResult(
                 linker_name=linker_config.name,
@@ -153,98 +190,74 @@ class BenchmarkRunner:
                 error=f"{linker_config.display_name} がインストールされていません",
             )
 
-        self._emit_status(f"リンク中: {linker_config.display_name}...")
+        self._emit_status(f"リンク中: {linker_config.display_name} (mysqld)...")
 
-        obj_files = sorted(glob.glob(os.path.join(self.build_dir, "*.o")))
-        output_bin = os.path.join(self.build_dir, f"bench_{linker_config.name}")
+        base_cmd = self._get_link_cmd()
 
-        cmd = [
-            "g++",
-            f"-fuse-ld={linker_config.fuse_flag}",
-            "-o", output_bin,
-        ] + obj_files
+        # リンカ指定を差し替え
+        linker_flag = f"-fuse-ld={linker_config.fuse_flag}"
+        # cwd=build_dir で実行するので相対パスで指定
+        output_bin = f"runtime_output_directory/mysqld_{linker_config.name}"
+        cmd = list(base_cmd)  # コピー
+        # g++ の直後にリンカフラグを挿入
+        cmd.insert(1, linker_flag)
+        # 出力ファイル名を差し替え
+        try:
+            o_idx = cmd.index("-o")
+            cmd[o_idx + 1] = output_bin
+        except ValueError:
+            cmd.extend(["-o", output_bin])
 
         monitor = CpuMonitor(interval=self.cpu_interval)
         monitor.start(callback=self._cpu_callback)
 
-        total_elapsed = 0.0
-        iterations = 0
-        last_returncode = 0
-        last_stderr = ""
-
         start_time = time.monotonic()
         try:
-            # min_link_duration 秒以上になるまでリンクを繰り返し、
-            # 十分な CPU サンプルを取得する
-            while True:
-                proc = subprocess.run(cmd, capture_output=True, text=True)
-                last_returncode = proc.returncode
-                last_stderr = proc.stderr
-                iterations += 1
-                total_elapsed = time.monotonic() - start_time
-
-                if last_returncode != 0:
-                    break
-                if total_elapsed >= self.min_link_duration:
-                    break
-
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=self.build_dir,
+            )
+            elapsed = time.monotonic() - start_time
             cpu_result = monitor.stop()
-            avg_time = total_elapsed / iterations if iterations > 0 else total_elapsed
 
-            if last_returncode != 0:
+            if proc.returncode != 0:
                 return BenchmarkResult(
                     linker_name=linker_config.name,
                     display_name=linker_config.display_name,
-                    link_time=avg_time,
+                    link_time=elapsed,
                     cpu_data=cpu_result,
                     success=False,
-                    error=last_stderr,
+                    error=proc.stderr[:500],
                 )
 
             return BenchmarkResult(
                 linker_name=linker_config.name,
                 display_name=linker_config.display_name,
-                link_time=round(avg_time, 4),
+                link_time=round(elapsed, 4),
                 cpu_data=cpu_result,
                 success=True,
             )
         except Exception as e:
-            total_elapsed = time.monotonic() - start_time
+            elapsed = time.monotonic() - start_time
             cpu_result = monitor.stop()
-            avg_time = total_elapsed / max(iterations, 1)
             return BenchmarkResult(
                 linker_name=linker_config.name,
                 display_name=linker_config.display_name,
-                link_time=avg_time,
+                link_time=elapsed,
                 cpu_data=cpu_result,
                 success=False,
                 error=str(e),
             )
 
-    def run_all(self) -> list[BenchmarkResult]:
-        """全リンカでベンチマークを実行"""
-        self.generate_sources()
-        self.compile_objects()
-
-        results = []
-        for linker in LINKERS:
-            result = self.link_with(linker)
-            results.append(result)
-            if result.success:
-                self._emit_status(
-                    f"{result.display_name}: {result.link_time:.4f} 秒"
-                )
-            else:
-                self._emit_status(
-                    f"{result.display_name}: エラー - {result.error}"
-                )
-
-        self._emit_status("ベンチマーク完了")
-        return results
-
     def cleanup(self):
-        """ビルド成果物を削除"""
-        if os.path.exists(self.build_dir):
-            shutil.rmtree(self.build_dir)
-        if os.path.exists(self.bench_src_dir):
-            shutil.rmtree(self.bench_src_dir)
+        """リンク結果のバイナリを削除 (ソース・オブジェクトは残す)"""
+        for linker in LINKERS:
+            bin_path = os.path.join(
+                self.build_dir,
+                "runtime_output_directory",
+                f"mysqld_{linker.name}",
+            )
+            if os.path.isfile(bin_path):
+                os.remove(bin_path)

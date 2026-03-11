@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useWebSocket } from './useWebSocket';
 import LinkTimeChart from './components/LinkTimeChart';
 import CpuGrid from './components/CpuGrid';
@@ -19,8 +18,6 @@ export default function App() {
     reset,
   } = useWebSocket();
 
-  const [numModules, setNumModules] = useState(500);
-
   return (
     <div className="min-h-screen bg-slate-950">
       {/* ヘッダー */}
@@ -33,31 +30,15 @@ export default function App() {
                 LinkBench
               </h1>
               <p className="text-xs text-slate-400">
-                リンカ パフォーマンス ベンチマーク
+                MySQL (mysqld) リンカ パフォーマンス ベンチマーク
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* モジュール数設定 */}
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400">モジュール数:</label>
-              <select
-                value={numModules}
-                onChange={(e) => setNumModules(Number(e.target.value))}
-                disabled={running}
-                className="bg-slate-800 text-slate-200 text-sm rounded-lg px-3 py-1.5 border border-slate-600 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-              >
-                <option value={100}>100</option>
-                <option value={200}>200</option>
-                <option value={500}>500</option>
-                <option value={1000}>1000</option>
-              </select>
-            </div>
-
             {/* ベンチマーク開始ボタン */}
             <button
-              onClick={() => startBenchmark(numModules)}
+              onClick={() => startBenchmark()}
               disabled={running || !connected}
               className={`
                 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200
@@ -132,8 +113,9 @@ export default function App() {
               ベンチマークを開始しましょう
             </h2>
             <p className="text-slate-500 max-w-md mx-auto">
-              GNU ld、LLVM lld、mold の3つのリンカのリンク速度と
-              CPU使用率を比較します。上部の「ベンチマーク開始」ボタンを押してください。
+              MySQL (mysqld) のリンクを題材に、GNU ld、LLVM lld、mold の
+              3つのリンカのリンク速度と CPU 使用率を比較します。
+              上部の「ベンチマーク開始」ボタンを押してください。
             </p>
             <div className="mt-8 grid grid-cols-3 gap-4 max-w-lg mx-auto">
               <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/30">

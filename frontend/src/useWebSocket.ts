@@ -9,7 +9,7 @@ interface UseWebSocketReturn {
   results: LinkerResult[];
   liveCpu: CpuSnapshot | null;
   numCores: number;
-  startBenchmark: (numModules?: number) => void;
+  startBenchmark: () => void;
   reset: () => void;
 }
 
@@ -108,13 +108,13 @@ export function useWebSocket(): UseWebSocketReturn {
     };
   }, [connect]);
 
-  const startBenchmark = useCallback(async (numModules = 500) => {
+  const startBenchmark = useCallback(async () => {
     setResults([]);
     setStatusMessages([]);
     setLiveCpu(null);
     setRunning(true);
 
-    await fetch(`/api/benchmark/start?num_modules=${numModules}`, {
+    await fetch('/api/benchmark/start', {
       method: 'POST',
     });
   }, []);
