@@ -9,7 +9,21 @@ export default function StatusLog({ messages }: Props) {
 
   const handleCopy = async () => {
     if (messages.length === 0) return;
-    await navigator.clipboard.writeText(messages.join('\n'));
+    const text = messages.join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      // `document.execCommand()` is deprecated, but works as fallback 
+      // in environments where the Clipboard API cannot be used (HTTP connection).
+      document.execCommand('copy');  
+      document.body.removeChild(ta);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
