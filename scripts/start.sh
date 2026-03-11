@@ -44,6 +44,8 @@ HOST="${LINKBENCH_HOST:-0.0.0.0}"
 PORT="${LINKBENCH_PORT:-28000}"
 WORKERS="${LINKBENCH_WORKERS:-1}"
 
+export LINKBENCH_MODE=production
+
 echo "[linkbench] Starting on http://${HOST}:${PORT}"
 exec uvicorn backend.main:app \
     --host "$HOST" \
