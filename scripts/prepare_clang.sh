@@ -52,7 +52,7 @@ fi
 echo "[2/4] cmake 設定中..."
 mkdir -p "${BUILD_DIR}"
 cmake -S "${SRC_DIR}/llvm" -B "${BUILD_DIR}" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DLLVM_ENABLE_PROJECTS="clang" \
     -DLLVM_TARGETS_TO_BUILD="X86" \
     -DLLVM_INCLUDE_TESTS=OFF \

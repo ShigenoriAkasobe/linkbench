@@ -46,7 +46,7 @@ fi
 echo "[2/4] cmake 設定中..."
 mkdir -p "${BUILD_DIR}"
 cmake -S "${SRC_DIR}" -B "${BUILD_DIR}" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DWITH_UNIT_TESTS=OFF \
     -DWITH_BOOST="${MYSQL_DIR}/boost" \
     -DDOWNLOAD_BOOST=1 \
