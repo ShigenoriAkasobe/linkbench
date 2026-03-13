@@ -1,5 +1,6 @@
 bench_src
 mysql_bench
+clang_bench
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
