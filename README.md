@@ -1,6 +1,6 @@
 # LinkBench — Linker Performance Benchmark
 
-![alt text](data/img/linkbench_top.png)
+![alt text](data/img/linkbench_top.jpg)
 
 GNU ld / LLVM lld / mold の 3 つのリンカで **MySQL (mysqld)** をリンクし、リンク速度と**論理プロセッサごとの CPU 使用率**を計測・可視化するウェブアプリケーションです。
 
