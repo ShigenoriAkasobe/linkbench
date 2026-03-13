@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { WsMessage, LinkerResult, CpuSnapshot } from './types';
+import type { WsMessage, LinkerResult, CpuSnapshot, BenchMotif } from './types';
 
 interface UseWebSocketReturn {
   connected: boolean;
   running: boolean;
   currentLinker: string | null;
   statusMessages: string[];
-  results: LinkerResult[];
+  resultsByMotif: Partial<Record<BenchMotif, LinkerResult[]>>;
   liveCpu: CpuSnapshot | null;
   numCores: number;
-  startBenchmark: (linkerName?: string) => void;
+  mysqlPrepared: boolean;
+  clangPrepared: boolean;
+  startBenchmark: (linkerName?: string, motif?: BenchMotif) => void;
   reset: () => void;
 }
 
@@ -19,9 +21,11 @@ export function useWebSocket(): UseWebSocketReturn {
   const [running, setRunning] = useState(false);
   const [currentLinker, setCurrentLinker] = useState<string | null>(null);
   const [statusMessages, setStatusMessages] = useState<string[]>([]);
-  const [results, setResults] = useState<LinkerResult[]>([]);
+  const [resultsByMotif, setResultsByMotif] = useState<Partial<Record<BenchMotif, LinkerResult[]>>>({});
   const [liveCpu, setLiveCpu] = useState<CpuSnapshot | null>(null);
   const [numCores, setNumCores] = useState(0);
+  const [mysqlPrepared, setMysqlPrepared] = useState(true);
+  const [clangPrepared, setClangPrepared] = useState(false);
 
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,8 +64,10 @@ export function useWebSocket(): UseWebSocketReturn {
         case 'init':
           setRunning(msg.running ?? false);
           setCurrentLinker(msg.current_linker ?? null);
-          if (msg.results) setResults(msg.results);
+          if (msg.results_by_motif) setResultsByMotif(msg.results_by_motif);
           if (msg.num_cores) setNumCores(msg.num_cores);
+          if (msg.mysql_prepared !== undefined) setMysqlPrepared(msg.mysql_prepared);
+          if (msg.clang_prepared !== undefined) setClangPrepared(msg.clang_prepared);
           break;
 
         case 'status':
@@ -78,12 +84,17 @@ export function useWebSocket(): UseWebSocketReturn {
           break;
 
         case 'result':
-          if (msg.data) {
-            setResults((prev) => {
-              const filtered = prev.filter(r => r.linker_name !== msg.data!.linker_name);
+          if (msg.data && msg.motif) {
+            const motif = msg.motif;
+            setResultsByMotif((prev) => {
+              const motifResults = prev[motif] ?? [];
+              const filtered = motifResults.filter(r => r.linker_name !== msg.data!.linker_name);
               const next = [...filtered, msg.data!];
               const order = ['gnu_ld', 'lld', 'mold'];
-              return next.sort((a, b) => order.indexOf(a.linker_name) - order.indexOf(b.linker_name));
+              return {
+                ...prev,
+                [motif]: next.sort((a, b) => order.indexOf(a.linker_name) - order.indexOf(b.linker_name)),
+              };
             });
           }
           break;
@@ -91,7 +102,10 @@ export function useWebSocket(): UseWebSocketReturn {
         case 'complete':
           setRunning(false);
           setCurrentLinker(null);
-          if (msg.results) setResults(msg.results);
+          if (msg.results && msg.motif) {
+            const motif = msg.motif;
+            setResultsByMotif(prev => ({ ...prev, [motif]: msg.results! }));
+          }
           break;
 
         case 'error':
@@ -113,22 +127,22 @@ export function useWebSocket(): UseWebSocketReturn {
     };
   }, [connect]);
 
-  const startBenchmark = useCallback(async (linkerName?: string) => {
+  const startBenchmark = useCallback(async (linkerName?: string, motif: BenchMotif = 'mysql') => {
     setStatusMessages([]);
     setLiveCpu(null);
     setRunning(true);
     if (!linkerName) {
-      setResults([]);
+      setResultsByMotif(prev => ({ ...prev, [motif]: [] }));
     }
 
-    const url = linkerName
-      ? `/api/benchmark/start?linker=${encodeURIComponent(linkerName)}`
-      : '/api/benchmark/start';
-    await fetch(url, { method: 'POST' });
+    const params = new URLSearchParams();
+    if (linkerName) params.set('linker', linkerName);
+    params.set('motif', motif);
+    await fetch(`/api/benchmark/start?${params}`, { method: 'POST' });
   }, []);
 
   const reset = useCallback(async () => {
-    setResults([]);
+    setResultsByMotif({});
     setStatusMessages([]);
     setLiveCpu(null);
     setCurrentLinker(null);
@@ -140,9 +154,11 @@ export function useWebSocket(): UseWebSocketReturn {
     running,
     currentLinker,
     statusMessages,
-    results,
+    resultsByMotif,
     liveCpu,
     numCores,
+    mysqlPrepared,
+    clangPrepared,
     startBenchmark,
     reset,
   };

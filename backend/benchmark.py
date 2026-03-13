@@ -69,19 +69,30 @@ def check_mysql_prepared(project_root: str) -> bool:
     return os.path.isfile(stamp)
 
 
-def _extract_link_command(mysql_dir: str) -> list[str] | None:
-    """mysqld のリンクコマンドを取得する
+def check_clang_prepared(project_root: str) -> bool:
+    """Clang ベンチマークが準備済みか確認"""
+    clang_dir = os.path.join(project_root, "clang_bench")
+    stamp = os.path.join(clang_dir, ".prepared")
+    return os.path.isfile(stamp)
+
+
+def _extract_link_command_from_dir(
+    bench_dir: str,
+    ninja_target: str,
+    output_flag: str,
+) -> list[str] | None:
+    """指定ディレクトリのリンクコマンドを取得する汎用関数
 
     1. link_command.txt があればそれを使う
     2. なければ ninja -t commands で取得
     いずれの場合も既存の -fuse-ld= フラグは除去する
     """
-    build_dir = os.path.join(mysql_dir, "build")
+    build_dir = os.path.join(bench_dir, "build")
 
     raw_cmd = None
 
     # 方法1: link_command.txt を読む
-    cmd_file = os.path.join(mysql_dir, "link_command.txt")
+    cmd_file = os.path.join(bench_dir, "link_command.txt")
     if os.path.isfile(cmd_file):
         with open(cmd_file, "r") as f:
             raw_cmd = f.read().strip()
@@ -90,13 +101,12 @@ def _extract_link_command(mysql_dir: str) -> list[str] | None:
     if not raw_cmd:
         try:
             proc = subprocess.run(
-                ["ninja", "-t", "commands", "runtime_output_directory/mysqld"],
+                ["ninja", "-t", "commands", ninja_target],
                 capture_output=True, text=True, cwd=build_dir,
             )
             if proc.returncode == 0:
-                # 最後のコマンド行 (-o ... mysqld を含む行) を使う
                 for line in reversed(proc.stdout.strip().split("\n")):
-                    if "-o runtime_output_directory/mysqld" in line:
+                    if output_flag in line:
                         raw_cmd = line
                         break
         except FileNotFoundError:
@@ -118,6 +128,15 @@ def _extract_link_command(mysql_dir: str) -> list[str] | None:
     tokens = [t for t in tokens if not t.startswith("-fuse-ld=")]
 
     return tokens
+
+
+def _extract_link_command(mysql_dir: str) -> list[str] | None:
+    """mysqld のリンクコマンドを取得する (後方互換ラッパー)"""
+    return _extract_link_command_from_dir(
+        mysql_dir,
+        "runtime_output_directory/mysqld",
+        "-o runtime_output_directory/mysqld",
+    )
 
 
 class MySQLBenchmarkRunner:
@@ -170,7 +189,11 @@ class MySQLBenchmarkRunner:
         if self._base_link_cmd is not None:
             return self._base_link_cmd
 
-        cmd = _extract_link_command(self.mysql_dir)
+        cmd = _extract_link_command_from_dir(
+            self.mysql_dir,
+            "runtime_output_directory/mysqld",
+            "-o runtime_output_directory/mysqld",
+        )
         if cmd is None:
             raise RuntimeError(
                 "Cannot extract mysqld link command. "
@@ -259,5 +282,156 @@ class MySQLBenchmarkRunner:
                 "runtime_output_directory",
                 f"mysqld_{linker.name}",
             )
+            if os.path.isfile(bin_path):
+                os.remove(bin_path)
+
+
+class ClangBenchmarkRunner:
+    """Clang 19 を対象としたリンカベンチマーク実行クラス"""
+
+    def __init__(
+        self,
+        project_root: str,
+        cpu_interval: float = 0.05,
+    ):
+        self.project_root = project_root
+        self.clang_dir = os.path.join(project_root, "clang_bench")
+        self.build_dir = os.path.join(self.clang_dir, "build")
+        self.cpu_interval = cpu_interval
+        self._status_callback = None
+        self._cpu_callback = None
+        self._base_link_cmd: list[str] | None = None
+        self._clang_target: str | None = None
+
+    def set_callbacks(self, status_callback=None, cpu_callback=None):
+        self._status_callback = status_callback
+        self._cpu_callback = cpu_callback
+
+    def _emit_status(self, message: str):
+        if self._status_callback:
+            self._status_callback(message)
+
+    def is_prepared(self) -> bool:
+        """Clang のオブジェクトファイルが準備済みか"""
+        return os.path.isfile(os.path.join(self.clang_dir, ".prepared"))
+
+    def _get_clang_target(self) -> str:
+        """ターゲット名を取得 (.clang_target ファイルから読む)"""
+        if self._clang_target is not None:
+            return self._clang_target
+
+        target_file = os.path.join(self.clang_dir, ".clang_target")
+        if os.path.isfile(target_file):
+            with open(target_file) as f:
+                self._clang_target = f.read().strip()
+        else:
+            # フォールバック: bin/ における clang-X を探索
+            bin_dir = os.path.join(self.build_dir, "bin")
+            if os.path.isdir(bin_dir):
+                for name in sorted(os.listdir(bin_dir)):
+                    if name.startswith("clang-") and name[6:].isdigit():
+                        self._clang_target = f"bin/{name}"
+                        break
+            if self._clang_target is None:
+                self._clang_target = "bin/clang-19"
+
+        return self._clang_target
+
+    def _get_link_cmd(self) -> list[str]:
+        """clang のベースリンクコマンドを取得 (キャッシュ)"""
+        if self._base_link_cmd is not None:
+            return self._base_link_cmd
+
+        target = self._get_clang_target()
+        cmd = _extract_link_command_from_dir(
+            self.clang_dir,
+            target,
+            f"-o {target}",
+        )
+        if cmd is None:
+            raise RuntimeError(
+                "Cannot extract clang link command. "
+                "Please run scripts/prepare_clang.sh first."
+            )
+        self._base_link_cmd = cmd
+        return cmd
+
+    def link_with(self, linker_config: LinkerConfig) -> BenchmarkResult:
+        """指定リンカで clang をリンクし、計測結果を返す"""
+        if not check_linker_available(linker_config):
+            return BenchmarkResult(
+                linker_name=linker_config.name,
+                display_name=linker_config.display_name,
+                link_time=0,
+                success=False,
+                error=f"{linker_config.display_name} is not installed",
+            )
+
+        self._emit_status(f"Linking: {linker_config.display_name} (clang)...")
+
+        base_cmd = self._get_link_cmd()
+        target = self._get_clang_target()
+        linker_flag = f"-fuse-ld={linker_config.fuse_flag}"
+        output_bin = f"{target}_{linker_config.name}"
+
+        cmd = list(base_cmd)
+        cmd.insert(1, linker_flag)
+        try:
+            o_idx = cmd.index("-o")
+            cmd[o_idx + 1] = output_bin
+        except ValueError:
+            cmd.extend(["-o", output_bin])
+
+        monitor = CpuMonitor(interval=self.cpu_interval)
+        monitor.start(callback=self._cpu_callback)
+
+        start_time = time.monotonic()
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                cwd=self.build_dir,
+            )
+            elapsed = time.monotonic() - start_time
+            cpu_result = monitor.stop()
+
+            if proc.returncode != 0:
+                return BenchmarkResult(
+                    linker_name=linker_config.name,
+                    display_name=linker_config.display_name,
+                    link_time=elapsed,
+                    cpu_data=cpu_result,
+                    success=False,
+                    error=proc.stderr[:500],
+                )
+
+            return BenchmarkResult(
+                linker_name=linker_config.name,
+                display_name=linker_config.display_name,
+                link_time=round(elapsed, 4),
+                cpu_data=cpu_result,
+                success=True,
+            )
+        except Exception as e:
+            elapsed = time.monotonic() - start_time
+            cpu_result = monitor.stop()
+            return BenchmarkResult(
+                linker_name=linker_config.name,
+                display_name=linker_config.display_name,
+                link_time=elapsed,
+                cpu_data=cpu_result,
+                success=False,
+                error=str(e),
+            )
+
+    def cleanup(self):
+        """リンク結果のバイナリを削除 (ソース・オブジェクトは残す)"""
+        try:
+            target = self._get_clang_target()
+        except Exception:
+            return
+        for linker in LINKERS:
+            bin_path = os.path.join(self.build_dir, f"{target}_{linker.name}")
             if os.path.isfile(bin_path):
                 os.remove(bin_path)

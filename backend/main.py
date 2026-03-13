@@ -14,9 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.benchmark import (
     MySQLBenchmarkRunner,
+    ClangBenchmarkRunner,
     LINKERS,
     get_available_linkers,
     check_mysql_prepared,
+    check_clang_prepared,
 )
 
 
@@ -25,8 +27,9 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # ベンチマーク状態管理
 benchmark_state = {
     "running": False,
-    "results": None,
+    "results": {},  # {"mysql": [...], "clang": [...]}
     "current_linker": None,
+    "current_motif": None,
 }
 
 # WebSocket接続管理
@@ -93,6 +96,12 @@ async def mysql_status():
     return {"prepared": check_mysql_prepared(PROJECT_ROOT)}
 
 
+@app.get("/api/clang/status")
+async def clang_status():
+    """Clang ベンチマーク準備状態を返す"""
+    return {"prepared": check_clang_prepared(PROJECT_ROOT)}
+
+
 @app.get("/api/benchmark/status")
 async def benchmark_status():
     """ベンチマーク状態を返す"""
@@ -113,40 +122,53 @@ async def reset_benchmark():
     """ベンチマーク結果をリセット"""
     if benchmark_state["running"]:
         return {"error": "Cannot reset while benchmark is running"}
-    benchmark_state["results"] = None
+    benchmark_state["results"] = {}
     return {"status": "reset"}
 
 
 @app.post("/api/benchmark/start")
-async def start_benchmark(linker: str | None = None):
+async def start_benchmark(linker: str | None = None, motif: str = "mysql"):
     """ベンチマークを開始"""
     if benchmark_state["running"]:
         return {"error": "Benchmark is already running"}
+    if motif not in ("mysql", "clang"):
+        return {"error": f"Unknown motif: {motif}"}
 
-    asyncio.create_task(_run_benchmark(linker_name=linker))
+    asyncio.create_task(_run_benchmark(linker_name=linker, motif=motif))
     return {"status": "started"}
 
 
-async def _run_benchmark(linker_name: str | None = None):
+async def _run_benchmark(linker_name: str | None = None, motif: str = "mysql"):
     """ベンチマーク非同期実行"""
     benchmark_state["running"] = True
+    benchmark_state["current_motif"] = motif
     if linker_name is None:
-        benchmark_state["results"] = None
+        benchmark_state["results"][motif] = []
     loop = asyncio.get_event_loop()
 
-    runner = MySQLBenchmarkRunner(
-        project_root=PROJECT_ROOT,
-        cpu_interval=0.025,
-    )
+    if motif == "clang":
+        runner = ClangBenchmarkRunner(
+            project_root=PROJECT_ROOT,
+            cpu_interval=0.025,
+        )
+        target_label = "Clang (clang)"
+    else:
+        runner = MySQLBenchmarkRunner(
+            project_root=PROJECT_ROOT,
+            cpu_interval=0.025,
+        )
+        target_label = "MySQL (mysqld)"
 
     async def send_status(message: str):
         await broadcast({"type": "status", "message": message})
 
     try:
         if not runner.is_prepared():
-            await send_status("MySQL object files not found.")
-            await send_status("Please run scripts/prepare_mysql.sh first.")
-            await broadcast({"type": "error", "message": "MySQL is not prepared."})
+            motif_name = "Clang" if motif == "clang" else "MySQL"
+            script_name = "prepare_clang.sh" if motif == "clang" else "prepare_mysql.sh"
+            await send_status(f"{motif_name} object files not found.")
+            await send_status(f"Please run scripts/{script_name} first.")
+            await broadcast({"type": "error", "message": f"{motif_name} is not prepared."})
             return
 
         # 実行するリンカを決定
@@ -158,11 +180,11 @@ async def _run_benchmark(linker_name: str | None = None):
             await send_status(f"Starting benchmark for {target_linkers[0].display_name}...")
         else:
             target_linkers = LINKERS
-            await send_status("Starting MySQL (mysqld) link benchmark...")
+            await send_status(f"Starting {target_label} link benchmark...")
 
         for linker in target_linkers:
             benchmark_state["current_linker"] = linker.display_name
-            await send_status(f"Linking: {linker.display_name} (mysqld)...")
+            await send_status(f"Linking: {linker.display_name} ({target_label})...")
 
             def cpu_callback(snapshot, _linker_name=linker.display_name):
                 asyncio.run_coroutine_threadsafe(
@@ -192,21 +214,21 @@ async def _run_benchmark(linker_name: str | None = None):
             }
 
             # 結果をアップサート
-            stored = benchmark_state["results"] or []
+            stored = benchmark_state["results"].get(motif, []) or []
             stored = [r for r in stored if r["linker_name"] != result_dict["linker_name"]]
             stored.append(result_dict)
             linker_order = {l.name: i for i, l in enumerate(LINKERS)}
             stored.sort(key=lambda r: linker_order.get(r["linker_name"], 99))
-            benchmark_state["results"] = stored
+            benchmark_state["results"][motif] = stored
 
-            await broadcast({"type": "result", "data": result_dict})
+            await broadcast({"type": "result", "data": result_dict, "motif": motif})
 
             if result.success:
                 await send_status(f"{result.display_name}: {result.link_time:.4f}s")
             else:
                 await send_status(f"{result.display_name}: Error - {result.error}")
 
-        await broadcast({"type": "complete", "results": benchmark_state["results"]})
+        await broadcast({"type": "complete", "motif": motif, "results": benchmark_state["results"].get(motif, [])})
         await send_status("Benchmark complete!")
 
     except Exception as e:
@@ -215,6 +237,7 @@ async def _run_benchmark(linker_name: str | None = None):
     finally:
         benchmark_state["running"] = False
         benchmark_state["current_linker"] = None
+        benchmark_state["current_motif"] = None
         try:
             runner.cleanup()
         except Exception:
@@ -232,8 +255,11 @@ async def websocket_endpoint(ws: WebSocket):
             "type": "init",
             "running": benchmark_state["running"],
             "current_linker": benchmark_state["current_linker"],
-            "results": benchmark_state["results"],
+            "current_motif": benchmark_state["current_motif"],
+            "results_by_motif": benchmark_state["results"],
             "num_cores": psutil.cpu_count(logical=True),
+            "mysql_prepared": check_mysql_prepared(PROJECT_ROOT),
+            "clang_prepared": check_clang_prepared(PROJECT_ROOT),
         }))
         # 接続を維持
         while True:
